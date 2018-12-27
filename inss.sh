@@ -1,180 +1,150 @@
-:
+#!/system/bin/sh
 
-aixiao="${@}"
+parameter="${@}";
 
-function inss_INIT() {
-    null="/dev/null"
-    bbox="/system/xbin/busybox"
-    aixiao_inss="/data/local/aixiao.inss"
-    ip_addr_array=(99) #4 43 31
-    #填写自己需要的内网IP.IP第二个字节值.SHELL数组.
-    ip_addr_array1=(10) #10
+#开启飞行模式(关闭网络)
+STOP="settings put global airplane_mode_on 1 &> /dev/null; am broadcast -a android.intent.action.AIRPLANE_MODE &> /dev/null; svc data disable";
+
+#关闭飞行模式(开启网络)
+START="settings put global airplane_mode_on 0 &> /dev/null; am broadcast -a android.intent.action.AIRPLANE_MODE &> /dev/null; svc data enable";
+
+function INIT_() {
+    null="/dev/null";
+    bbox="/system/xbin/busybox";
+    inss="/data/local/inss";
+    
     #填写自己需要的内网IP.IP第一个字节值.SHELL数组.
-    ip_rmnet="rmnet0"
+    ip_addr_array1=(10); # 10
+
+    #填写自己需要的内网IP.IP第二个字节值.SHELL数组.
+    ip_addr_array2=(99 97 44 45 31); # 4 43 31
+
     #填写自己的网卡.
+    NIC="rmnet_data1";
+
+    #网卡开启状态.
+    NIC_STATUS="U";
+    
+    #等待7秒.
+    SLEEP="7";
+
 
     if ! ${bbox} &> /dev/null ; then echo "BusyBox No Found !" ; exit 1 ; fi
-    if ! svc &> /dev/null ; then echo "Svc No Found !" ; exit 1 ; fi
+    
+    svc_="$(${bbox} which svc)";
+    settings_="$(${bbox} which settings)";
+    am_="$(${bbox} which am)";
+    netcfg_="$(${bbox} which netcfg)"
+
     #判断必须要命令.否则退出子壳返回错误代码1.
-    if ! netcfg &> /dev/null ; then export netstat="${bbox} netstat" ; export c="U" ; else export c="UP" ; fi
-    #判断netcfg命令存在不存在.如果存在c等于UP.如果不存在c等于U.
-    if ${bbox} [[ "${aixiao}" != "" ]] ; then
-        ${bbox} echo ${aixiao} | grep [0-9] > /dev/null 2>&1 && ip_addr_array=(${aixiao})
-    fi
-    if ${bbox} [[ "${aixiao}" = "" ]] && ${bbox} [[ -e ${aixiao_inss}/etc/inss.conf ]] ; then
-        . ${aixiao_inss}/etc/inss.conf
-    fi
-    if ${bbox} [[ "${ip_addr}" != "" ]] ; then
-        ip_addr_array=(${ip_addr})
-    fi
-    if ${bbox} [[ "${ip_addr1}" != "" ]] ; then
-        ip_addr_array1=(${ip_addr1})
-    fi
-}
+    if ${bbox} [[ "${svc_}" = "" ]]; then echo "Svc No Found !" ; exit 1 ; fi
+    if ${bbox} [[ "${settings_}" = "" ]]; then echo "Settings No Found !" ; exit 1 ; fi
+    if ${bbox} [[ "${am_}" = "" ]]; then echo "Am No Found !" ; exit 1 ; fi
 
-function inss_VERSION() {
-    #日志.
-    echo "
-#Ip network switch script.
-#20150913 aixiao write.
-  初步编写程序架构.
-#20151101 aixiao modify.
-  增加方案判断路由.
-#20160208 aixiao modify.
-  循环执行sleep直到营运商给手机分配IP,不会等待几秒,实时判断分配的IP.
-#20160521 aixiao modify.
-  增加选项&参数.
-#20160614 aixiao modify.
-  加密shell script留下"-t"选项.会先显示该指令及所下的参数.
-#20160622 aixiao modify.
-  增加配置文件(默认${aixiao_inss}/etc/inss.conf).
-#20160628 aixiao modify.
-  增加日志文件(默认${aixiao_inss}/log/ip_address.log).
-#20160710 aixiao modify.
-  规范代码,包括自定义函数自定义变量.
-#20160819 aixiao modify.
+    if ${bbox} [[ "${parameter}" != "" ]] ; then
+        ${bbox} echo ${parameter} | grep [0-9] > /dev/null 2>&1 && ip_addr_array2=(${parameter})
+    fi
 
-#20170215 aixiao modify.
-  全部函数调用.
-inss by aixiao.
-Email 1605227279@qq.com.
-"
-    exit 0
-}
-
-function inss_HELP() {
-    #帮助
-    ${bbox} cat << EOF
+function HELP_() {
+#帮助
+${bbox} cat << EOF
 Ip network switch script.
 Usage:
     ${0} [N] [N].
-    inss [option] [parameter].
+    ${0} [option] [parameter].
 options:
-    -t tarck.
-    -c config file.
-    -h print help.
-    -v|-V print version information.
+    -x  : tarck.
+    -c  : config file.
+    -h  : print help.
 
 parameters:
-    -c config file (default: ${aixiao_inss}/etc/inss.conf).
+    -c  : config file (default: ${inss}/conf/inss.ini).
 
-inss by aixiao.
-Email 1605227279@qq.com.
+inss by aixiao@aixiao.me.
 EOF
     exit 0
 }
 
-function inss_ROOT(){
-    #root用户.
+}
+
+function ROOT_(){
+    # root用户.
     if ${bbox} [[ "`${bbox} id -u`" != "0" ]] ; then ${bbox} echo "ROOT user run ?" ; exit 1 ; fi
 }
 
-function inss_ip() {
-    #写入日志文件.
-    ip=$(${netstat} -r | ${bbox} grep ${ip_rmnet} | ${bbox} grep U | ${bbox} awk '{print $1}')
-    if ${bbox} [[ -d ${aixiao_inss}/log ]] ; then
+function LOG_() {
+    # 写入日志文件.
+    ip=$(${bbox} netstat -r | ${bbox} grep ${NIC} | ${bbox} grep ${NIC_STATUS} | ${bbox} awk '{print $1}')
+    if ${bbox} [[ -d ${inss}/log ]] ; then
         today=$(date +"%Y%m%d%H%M%S")
-        echo ${today} >> ${aixiao_inss}/log/ip_address.log
-        echo ${ip} >> ${aixiao_inss}/log/ip_address.log
+        echo ${today} >> ${inss}/log/ip_address.log
+        echo ${ip} >> ${inss}/log/ip_address.log
     fi
 }
 
-function inss_a() {
-    #截取IP第二个字节值.
-    if [[ "${1}" = "UP" ]] ; then
-        ip_addres=`netcfg | ${bbox} grep UP | ${bbox} grep ${ip_rmnet} | ${bbox} grep -v "lo" | ${bbox} tr -s " " | ${bbox} cut -d "." -f 3`
-        echo "${ip_addres}"
-    elif [[ "${1}" = "U" ]] ; then
-        ip_addres=`${netstat} -r | ${bbox} grep ${ip_rmnet} | ${bbox} grep U | ${bbox} awk '{print $1}' | ${bbox} cut -d "." -f 2`
-        echo "${ip_addres}"
-    fi
+function one_() {
+    # 截取IP第一个字节值.
+    ip_addres1=`${bbox} netstat -r | ${bbox} grep ${NIC} | ${bbox} grep ${NIC_STATUS} | ${bbox} awk '{print $1}' | ${bbox} cut -d "." -f 1`
+    echo "${ip_addres1}"
 }
 
-function inss_b() {
-    #网络状态.
-    if [[ "${1}" = "UP" ]] ; then
-        ip_rmnet0=`netcfg | ${bbox} grep ${ip_addres} | ${bbox} grep -v "lo" | ${bbox} awk '{print $2}'`
-        echo "$ip_rmnet0"
-    elif [[ "${1}" = "U" ]] ; then
-        ip_rmnet0=`${netstat} -r | ${bbox} grep ${ip_addres} | ${bbox} awk 'NR==1 {print $4}'`
-        echo "${ip_rmnet0}"
-    fi
+function two_() {
+    # 截取IP第二个字节值.
+    ip_addres2=`${bbox} netstat -r | ${bbox} grep ${NIC} | ${bbox} grep ${NIC_STATUS} | ${bbox} awk '{print $1}' | ${bbox} cut -d "." -f 2`
+    echo "${ip_addres2}"
 }
 
-function inss_c() {
-    #循环执行sleep直到营运商给手机分配IP.
-    while [ "`${netstat} -r | ${bbox} grep ${ip_rmnet} | ${bbox} grep U | ${bbox} awk '{print $1}' | ${bbox} cut -d "." -f 2`" = "" ] ; do
-               sleep 3
-               inss_a ${c}
+function INSTATUS_() {
+    # 网络状态.
+    ip_rmnet0=`${bbox} netstat -r | ${bbox} grep ${NIC} | ${bbox} grep ${NIC_STATUS} | ${bbox} awk 'NR==1 {print $4}'`
+    echo "${ip_rmnet0}"
+}
+
+function IPSTATUS_() {
+    # 打印完整IP.
+    ${bbox} netstat -r | ${bbox} grep ${NIC} | ${bbox} grep ${NIC_STATUS} | ${bbox} awk '{print $1}'
+}
+
+function LOOP_() {
+    # 循环执行sleep直到营运商给手机分配IP.
+    while ${bbox} [[ "`two_`" = "" ]]; do
+        ${bbox} sleep 7;
+        two_
     done
 }
 
-function inss_d() {
-    #打印完整IP.
-    ${netstat} -r | ${bbox} grep ${ip_rmnet} | ${bbox} grep U | ${bbox} awk '{print $1}'
-}
 
-function inss_e() {
-    #截取IP第一个字节值.
-    if [[ "${1}" = "UP" ]] ; then
-        ip_addres=`netcfg | ${bbox} grep UP | ${bbox} grep ${ip_rmnet} | ${bbox} grep -v "lo" | ${bbox} tr -s " " | ${bbox} cut -d "." -f 3`
-        echo "${ip_addres}"
-    elif [[ "${1}" = "U" ]] ; then
-        ip_addres=`${netstat} -r | ${bbox} grep ${ip_rmnet} | ${bbox} grep U | ${bbox} awk '{print $1}' | ${bbox} cut -d "." -f 1`
-        echo "${ip_addres}"
-    fi
-}
 
-function inss_MAIN {
-    if ${bbox} [[ "`inss_b ${c} 2> /dev/null`" != "${c}" ]] ; then   #这行判断网络是否开启.
+function MAIN_ {
+    if ${bbox} [[ "`INSTATUS_ 2> /dev/null`" != "${NIC_STATUS}" ]] ; then    # 判断网络是否开启.
         echo "数据连接已经关闭..."    
         echo "数据连接正在打开..."
     else
         echo "数据连接已经开启..."
-        for zhy in ${ip_addr_array[@]} ; do                          #如果开启还要检查IP对不对.
-            if ${bbox} [[ `inss_a ${c}` = $zhy ]] ; then
-                for zhn in ${ip_addr_array1[@]} ; do
-                    if ${bbox} [[ `inss_e ${c}` = $zhn ]] ; then
-                        inss_ip                                      #调用自定义函数inss_ip把路由存入日至文件.
-                        exit 1                                       #如果IP的第二个字节值对的话退出.如果不对就进入下面循环.
+        for o in ${ip_addr_array1[@]} ; do                           # 开启还要检查IP对不对.
+            if ${bbox} [[ "`one_`" = "${o}" ]] ; then
+                for t in ${ip_addr_array2[@]} ; do
+                    if ${bbox} [[ "`two_`" = "${t}" ]] ; then
+                        LOG_                                         # 调用自定义函数LOG_, 把路由存入日至文件.
+                        exit 1                                       # IP第二个字节值匹配的话退出, 不匹配进入下面循环.
                     fi
                 done
             fi
         done
     fi
 
-    while true ; do                                                 #循环结构.
-        svc data disable                                             #关闭网络.
-        sleep 5                                                      #等待5秒.
-        svc data enable                                              #开启网络.
-        inss_c                                                       #调用自定义函数c,开启网络后3秒循环打印IP第二字节值,直到营运商给我分配IP.
-        inss_d                                                       #调用自定义函数inss_d打印路由.
-        for zhy in ${ip_addr_array[@]} ; do         
-            if ${bbox} [[ `inss_a ${c}` = $zhy ]] ; then             #一直循环直到IP的第二个字节值为我想要的.
-                for zhn in ${ip_addr_array1[@]} ; do                 #把数组元素赋值给变量zhn.
-                    if ${bbox} [[ `inss_e ${c}` = $zhn ]] ; then     #判断数组元素是否等于自定义函数打印的值.
-                        inss_ip
-                        exit 1                                       #然后退出.
+    while true ; do                                                  #循环结构.
+        eval ${STOP};
+        ${bbox} sleep ${SLEEP};                                      # 等待.
+        eval ${START};
+        LOOP_                                                        # 调用自定义函数LOOP_, 直到营运商给我分配IP.
+        IPSTATUS_                                                    # 调用自定义函数IPSTATUS_, 打印完整IP.
+        for o in ${ip_addr_array1[@]} ; do         
+            if ${bbox} [[ "`one_`" = "${o}" ]] ; then                # 循环直到IP的第二个字节值为我想要的.
+                for t in ${ip_addr_array2[@]} ; do                   # 数组元素赋值给变量t.
+                    if ${bbox} [[ "`two_`" = "${t}" ]] ; then        # 数组元素是否等于自定义函数返回值.
+                        LOG_
+                        exit 1                                       # 退出.
                     fi
                 done
             fi
@@ -182,33 +152,31 @@ function inss_MAIN {
     done
 }
 
-inss_INIT
-while getopts :tc:hvV lm
+INIT_
+while getopts :xc:h? l
 do
-case ${lm} in
-    t)
-        log=t
+case ${l} in
+    x)
+        debug=x
         ;;
     c)
         #载入配置文件.
         . $OPTARG
         ;;
-    h)
-        inss_HELP
+    h|?)
+        HELP_;
         ;;
-    v|V)
-        inss_VERSION
-        ;;
+
 esac
 done
 shift $((OPTIND-1))
-test "${log}" = "t" && set -x
-inss_INIT
-inss_ROOT
-inss_a ${c}                                                      #调用自定义函数a打印一下IP的第二个字节值.
-inss_e ${c}
-inss_d
-inss_b ${c} 2> ${null}                                           #调用自定义函数b打印一下网络的状态.主要给我看的.
-inss_MAIN
+test "${debug}" = "x" && set -x
+ROOT_                                                          # 判断ROOT用户执行.
+one_                                                           # 调用自定义函数one_, 打印IP的第一个字节值.
+two_                                                           # 调用自定义函数two_, 打印IP的第二个字节值.
+IPSTATUS_                                                      # 调用自定义函数IPSTATUS_, 打印IP.
+INSTATUS_ 2> ${null}                                           # 调用自定义函数INSTATUS_, 打印网络的状态.
+MAIN_
 exit
-AIXIAO.
+201812262344
+aixiao@aixiao.me
