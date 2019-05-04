@@ -1,14 +1,8 @@
 #!/system/bin/sh
 
-parameter="${@}";
-
-#开启飞行模式(关闭网络)
-STOP="settings put global airplane_mode_on 1 &> /dev/null; am broadcast -a android.intent.action.AIRPLANE_MODE &> /dev/null; svc data disable";
-
-#关闭飞行模式(开启网络)
-START="settings put global airplane_mode_on 0 &> /dev/null; am broadcast -a android.intent.action.AIRPLANE_MODE &> /dev/null; svc data enable";
 
 function INIT_() {
+    ARGV="$@";
     null="/dev/null";
     bbox="/system/xbin/busybox";
     inss="/data/local/inss";
@@ -17,10 +11,11 @@ function INIT_() {
     ip_addr_array1=(10); # 10
 
     #填写自己需要的内网IP.IP第二个字节值.SHELL数组.
-    ip_addr_array2=(99); # 4 43 31
+    ip_addr_array2=(70); # 4 43 31 70
+
 
     #填写自己的网卡.
-    NIC="rmnet_data0";
+    NIC="rmnet_data1";
 
     #网卡开启状态.
     NIC_STATUS="U";
@@ -28,31 +23,38 @@ function INIT_() {
     #等待7秒.
     SLEEP="7";
 
-
     if ! ${bbox} &> /dev/null; then echo "BusyBox No Found !"; exit 1; fi
     
     svc_="$(${bbox} which svc)";
     settings_="$(${bbox} which settings)";
     am_="$(${bbox} which am)";
     netcfg_="$(${bbox} which netcfg)";
+    setenforce_="$(${bbox} which setenforce)";
 
     #判断必须要命令.否则退出子壳返回错误代码1.
-    if ${bbox} [[ "${svc_}" = "" ]]; then echo "Svc No Found !"; exit 1; fi
-    if ${bbox} [[ "${settings_}" = "" ]]; then echo "Settings No Found !"; exit 1; fi
-    if ${bbox} [[ "${am_}" = "" ]]; then echo "Am No Found !"; exit 1; fi
+    if ${bbox} [[ "${svc_}" = "" ]]; then echo "Svc Command No Found !"; exit 1; fi
+    if ${bbox} [[ "${settings_}" = "" ]]; then echo "Settings Command No Found !"; exit 1; fi
+    if ${bbox} [[ "${am_}" = "" ]]; then echo "Am Command No Found !"; exit 1; fi
+    if ${bbox} [[ "${setenforce_}" = "" ]]; then echo "Setenforce Command No Found !"; exit 1; fi
+    
+    
+    #开启飞行模式(关闭网络)
+    STOP="settings put global airplane_mode_on 1 &> /dev/null; am broadcast -a android.intent.action.AIRPLANE_MODE &> /dev/null; ${svc_} data disable";
+    #关闭飞行模式(开启网络)
+    START="settings put global airplane_mode_on 0 &> /dev/null; am broadcast -a android.intent.action.AIRPLANE_MODE &> /dev/null; ${svc_} data enable";
 
-    if ${bbox} [[ "${parameter}" != "" ]]; then
-        : 判断参数是不是全为数字
-        num=`${bbox} echo ${parameter} | ${bbox} sed 's/[0-9]//g'`;
-        # ${bbox} echo ${parameter} | grep [0-9] > /dev/null 2>&1 && ip_addr_array2=(${parameter});
-        if ${bbox} [[ ${num} = "" ]]; then
-            ip_addr_array2=(${parameter});
-        fi
+
+    if ${bbox} test -n "${ARGV}"; then
+        ip_addr_array2=(${ARGV});
     fi
+
+    #设置SElinux状态
+    setenforce 0
+}
 
 function HELP_() {
 #帮助
-${bbox} cat << EOF
+    ${bbox} cat << EOF
 Ip network switch script.
 Usage:
     ${0} [N] [N].
@@ -63,16 +65,27 @@ options:
 	        [FILE] (default: ${inss}/conf/inss.ini).
     -h  : print help.
 
-inss by aixiao@aixiao.me.
+inss by aixiao@aixiao.me
 EOF
     exit 0;
 }
 
+# 判断参数是不是全部参数
+function parameter_() {
+    for n in ${@}; do
+        if ${bbox} test -n "$(echo $n | ${bbox} sed -n "/^[0-9]\+$/p")"; then
+            :
+        else
+            echo $n 'Not a number.'
+            exit 1;
+        fi
+    done
+    
 }
 
 function ROOT_(){
     # root用户.
-    if ${bbox} [[ "`${bbox} id -u`" != "0" ]] ; then ${bbox} echo "ROOT user run ?"; exit 1; fi
+    if ${bbox} [[ "`${bbox} id -u`" != "0" ]]; then ${bbox} echo "ROOT user run ?"; exit 1; fi
 }
 
 function LOG_() {
@@ -118,12 +131,12 @@ function LOOP_() {
 
 function MAIN_ {
     if ${bbox} [[ "`INSTATUS_ 2> /dev/null`" != "${NIC_STATUS}" ]]; then    # 判断网络是否开启.
-        echo "数据连接已经关闭...";    
+        echo "数据连接已经关闭...";
         echo "数据连接正在打开...";
     else
         echo "数据连接已经开启..."
         for o in ${ip_addr_array1[@]}; do                            # 开启还要检查IP对不对.
-            if ${bbox} [[ "`one_`" = "${o}" ]] ; then
+            if ${bbox} [[ "`one_`" = "${o}" ]]; then
                 for t in ${ip_addr_array2[@]}; do
                     if ${bbox} [[ "`two_`" = "${t}" ]]; then
                         LOG_;                                        # 调用自定义函数LOG_, 把路由存入日至文件.
@@ -134,7 +147,7 @@ function MAIN_ {
         done
     fi
 
-    while true; do                                                   #循环结构.
+    while true; do                                                   # 循环结构.
         eval ${STOP};
         ${bbox} sleep ${SLEEP};                                      # 等待.
         eval ${START};
@@ -153,7 +166,7 @@ function MAIN_ {
     done
 }
 
-INIT_
+INIT_ ${@};
 while getopts :xc:h? l; do
 case ${l} in
     x)
@@ -171,6 +184,7 @@ esac
 done
 shift $((OPTIND-1));
 test "${debug}" = "x" && set -x;
+parameter_ ${@};
 ROOT_;                                                          # 判断ROOT用户执行.
 one_ ;                                                          # 调用自定义函数one_, 打印IP的第一个字节值.
 two_;                                                           # 调用自定义函数two_, 打印IP的第二个字节值.
@@ -179,4 +193,11 @@ INSTATUS_ 2> ${null};                                           # 调用自定�
 MAIN_;
 exit $?;
 201812262344
-aixiao@aixiao.me
+201904011601
+201905041759
+错误:
+cmd: Failure calling service settings: Failed transaction (2147483646)
+cmd: Failure calling service activity: Failed transaction (2147483646)
+必须修改SElinux状态
+
+by aixiao@aixiao.me
