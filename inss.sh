@@ -15,7 +15,7 @@ function INIT_() {
 
 
     #填写自己的网卡.
-    NIC="rmnet_data1";
+    NIC="rmnet_data0";
 
     #网卡开启状态.
     NIC_STATUS="U";
@@ -50,19 +50,21 @@ function INIT_() {
 
     #设置SElinux状态
     setenforce 0
+    
+    ROOT_;                                                          # 判断ROOT用户执行.
 }
 
 function HELP_() {
 #帮助
     ${bbox} cat << EOF
+INSS
 Ip network switch script.
 Usage:
     ${0} [N] [N].
-    ${0} [-xch] [FILE].
+    ${0} [-xch] [-c FILE].
 options:
     -x  : print debug.
     -c  : config file.
-	        [FILE] (default: ${inss}/conf/inss.ini).
     -h  : print help.
 
 inss by aixiao@aixiao.me
@@ -131,10 +133,11 @@ function LOOP_() {
 
 function MAIN_ {
     if ${bbox} [[ "`INSTATUS_ 2> /dev/null`" != "${NIC_STATUS}" ]]; then    # 判断网络是否开启.
-        echo "数据连接已经关闭...";
-        echo "数据连接正在打开...";
+        #echo "数据连接已经关闭...";
+        #echo "数据连接正在打开...";
+        :
     else
-        echo "数据连接已经开启..."
+        #echo "数据连接已经开启..."
         for o in ${ip_addr_array1[@]}; do                            # 开启还要检查IP对不对.
             if ${bbox} [[ "`one_`" = "${o}" ]]; then
                 for t in ${ip_addr_array2[@]}; do
@@ -166,7 +169,7 @@ function MAIN_ {
     done
 }
 
-INIT_ ${@};
+
 while getopts :xc:h? l; do
 case ${l} in
     x)
@@ -179,17 +182,15 @@ case ${l} in
     h|?)
         HELP_;
         ;;
-
+    *)
+        HELP_;
+        ;;
 esac
 done
 shift $((OPTIND-1));
 test "${debug}" = "x" && set -x;
+INIT_ $@
 parameter_ ${@};
-ROOT_;                                                          # 判断ROOT用户执行.
-one_ ;                                                          # 调用自定义函数one_, 打印IP的第一个字节值.
-two_;                                                           # 调用自定义函数two_, 打印IP的第二个字节值.
-IPSTATUS_;                                                      # 调用自定义函数IPSTATUS_, 打印IP.
-INSTATUS_ 2> ${null};                                           # 调用自定义函数INSTATUS_, 打印网络的状态.
 MAIN_;
 exit $?;
 201812262344
