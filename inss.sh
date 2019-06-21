@@ -15,7 +15,7 @@ function INIT_() {
 
 
     #填写自己的网卡.
-    NIC="rmnet_data0";
+    NIC="rmnet_data1";
 
     #网卡开启状态.
     NIC_STATUS="U";
@@ -82,7 +82,6 @@ function parameter_() {
             exit 1;
         fi
     done
-    
 }
 
 function ROOT_(){
@@ -169,7 +168,7 @@ function MAIN_ {
     done
 }
 
-
+INIT_ $@
 while getopts :xc:h? l; do
 case ${l} in
     x)
@@ -189,7 +188,6 @@ esac
 done
 shift $((OPTIND-1));
 test "${debug}" = "x" && set -x;
-INIT_ $@
 parameter_ ${@};
 MAIN_;
 exit $?;
